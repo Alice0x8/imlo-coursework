@@ -34,11 +34,13 @@ class CNN(nn.Module):
         self.gap = nn.AdaptiveAvgPool2d((1, 1))
 
         # Fully connected classifier
-        self.fc1 = nn.Linear(512, 256)
-        self.fc2 = nn.Linear(256, 37)  # 37 pet classes
+        # Fully connected classifier (slightly increased capacity)
+        self.fc1 = nn.Linear(512, 768)
+        self.fc2 = nn.Linear(768, 384)
+        self.fc3 = nn.Linear(384, 37)
 
-        # Dropout helps reduce overfitting
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(0.4)
+
 
     def forward(self, x):
         # Block 1
@@ -65,6 +67,10 @@ class CNN(nn.Module):
         # Fully connected layers
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
-        x = self.fc2(x)
+
+        x = F.relu(self.fc2(x))
+        x = self.dropout(x)
+
+        x = self.fc3(x)
 
         return x
