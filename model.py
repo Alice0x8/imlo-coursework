@@ -38,7 +38,7 @@ class CNN(nn.Module):
         self.fc2 = nn.Linear(256, 37)  # 37 pet classes
 
         # Dropout helps reduce overfitting
-        self.dropout = nn.Dropout(0.4)
+        self.dropout = nn.Dropout(0.3)
 
     def forward(self, x):
         # Block 1

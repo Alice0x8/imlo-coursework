@@ -91,7 +91,7 @@ val_dataset = Subset(full_train_no_aug, val_indices)
 # -----------------------------
 train_loader = DataLoader(
     train_dataset,
-    batch_size=32,
+    batch_size=64,
     shuffle=True
 )
 
@@ -123,7 +123,8 @@ scheduler = optim.lr_scheduler.ReduceLROnPlateau(
     optimizer,
     mode="max",
     factor=0.5,
-    patience=3
+    patience=2,
+    min_lr=1e-6
 )
 
 # -----------------------------
