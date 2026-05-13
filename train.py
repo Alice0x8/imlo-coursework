@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
-from torch.utils.data import random_split
+from torch.utils.data import DataLoader, random_split, Subset
 
 from model import CNN
 
@@ -13,10 +12,16 @@ from model import CNN
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
-# ---------------------------------------------------
-# Image preprocessing + augmentation
-# ---------------------------------------------------
-transform = transforms.Compose([
+# -----------------------------
+# Reproducibility
+# -----------------------------
+torch.manual_seed(42)
+
+# -----------------------------
+# Transforms
+# -----------------------------
+# Training transform includes data augmentation
+train_transform = transforms.Compose([
     transforms.Resize((128, 128)),
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(10),
@@ -27,30 +32,72 @@ transform = transforms.Compose([
     )
 ])
 
+# Validation transform has NO augmentation
+val_transform = transforms.Compose([
+    transforms.Resize((128, 128)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
+])
+
 # -----------------------------
-# Dataset
+# Load full dataset twice
 # -----------------------------
-train_data = datasets.OxfordIIITPet(
+# One copy with augmentation for training
+full_train_aug = datasets.OxfordIIITPet(
     root="./data",
     split="trainval",
     target_types="category",
-    transform=transform,
+    transform=train_transform,
     download=True
 )
-train_size = int(0.8 * len(train_data))
-val_size = len(train_data) - train_size
 
-train_dataset, val_dataset = random_split(train_data, [train_size, val_size])
+# One copy without augmentation for validation
+full_train_no_aug = datasets.OxfordIIITPet(
+    root="./data",
+    split="trainval",
+    target_types="category",
+    transform=val_transform,
+    download=True
+)
 
+# -----------------------------
+# Train / Validation split
+# -----------------------------
+num_samples = len(full_train_aug)
+train_size = int(0.8 * num_samples)
+val_size = num_samples - train_size
+
+# Use fixed seed so the split is reproducible
+generator = torch.Generator().manual_seed(42)
+train_split, val_split = random_split(
+    range(num_samples),
+    [train_size, val_size],
+    generator=generator
+)
+
+# Extract indices from splits
+train_indices = train_split.indices
+val_indices = val_split.indices
+
+# Create subsets with different transforms
+train_dataset = Subset(full_train_aug, train_indices)
+val_dataset = Subset(full_train_no_aug, val_indices)
+
+# -----------------------------
+# Data loaders
+# -----------------------------
 train_loader = DataLoader(
     train_dataset,
-    batch_size=64,
+    batch_size=32,
     shuffle=True
 )
 
 val_loader = DataLoader(
     val_dataset,
-    batch_size=64,
+    batch_size=32,
     shuffle=False
 )
 
@@ -60,25 +107,36 @@ val_loader = DataLoader(
 model = CNN().to(device)
 
 # -----------------------------
-# Loss + Optimizer
+# Loss function and optimizer
 # -----------------------------
 criterion = nn.CrossEntropyLoss()
+
 optimizer = optim.Adam(
     model.parameters(),
-    lr=0.0003,
+    lr=0.0005,
     weight_decay=1e-4
+)
+
+# Learning-rate scheduler:
+# reduce LR when validation accuracy stops improving
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer,
+    mode="max",
+    factor=0.5,
+    patience=3
 )
 
 # -----------------------------
 # Training settings
 # -----------------------------
 epochs = 30
-best_accuracy = 0.0
+best_val_accuracy = 0.0
 
 # -----------------------------
 # Training loop
 # -----------------------------
 for epoch in range(epochs):
+    # ----- Training -----
     model.train()
 
     running_loss = 0.0
@@ -86,7 +144,6 @@ for epoch in range(epochs):
     train_total = 0
 
     for images, labels in train_loader:
-        print(labels.min().item(), labels.max().item())
         images = images.to(device)
         labels = labels.to(device)
 
@@ -98,18 +155,21 @@ for epoch in range(epochs):
         optimizer.zero_grad()
         loss.backward()
 
-        # Stabilise training
+        # Gradient clipping for stability
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
         optimizer.step()
 
         running_loss += loss.item()
 
-        # Accuracy
+        # Training accuracy
         _, predicted = torch.max(outputs, 1)
         train_total += labels.size(0)
         train_correct += (predicted == labels).sum().item()
 
+    train_accuracy = 100 * train_correct / train_total
+
+    # ----- Validation -----
     model.eval()
 
     val_correct = 0
@@ -126,21 +186,27 @@ for epoch in range(epochs):
             val_total += labels.size(0)
             val_correct += (predicted == labels).sum().item()
 
-    val_acc = 100 * val_correct / val_total
+    val_accuracy = 100 * val_correct / val_total
 
-    print(f"Validation Accuracy: {val_acc:.2f}%")
+    # Adjust learning rate based on validation accuracy
+    scheduler.step(val_accuracy)
 
+    # Print progress
     print(
-    f"Epoch [{epoch + 1}/{epochs}] "
-    f"Loss: {running_loss:.4f} "
-    f"Train Accuracy: {100 * train_correct / train_total:.2f}%"
+        f"Epoch [{epoch + 1}/{epochs}] "
+        f"Loss: {running_loss:.4f} "
+        f"Train Accuracy: {train_accuracy:.2f}% "
+        f"Validation Accuracy: {val_accuracy:.2f}%"
     )
 
-    #saving new best mdoel
-    if val_acc > best_accuracy:
-        best_accuracy = val_acc
+    # Save best model (based on validation accuracy)
+    if val_accuracy > best_val_accuracy:
+        best_val_accuracy = val_accuracy
         torch.save(model.state_dict(), "model.pth")
         print("Saved new best model!")
 
+# -----------------------------
+# Training finished
+# -----------------------------
 print("Training complete.")
-print("Best accuracy:", best_accuracy)
+print(f"Best validation accuracy: {best_val_accuracy:.2f}%")
