@@ -20,7 +20,7 @@ torch.manual_seed(42)
 transform = transforms.Compose([
     transforms.Resize((128, 128)),
     transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(5),
+    transforms.RandomRotation(3),
     transforms.ToTensor(),
     transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
@@ -38,9 +38,9 @@ val_transform = transforms.Compose([
 ])
 
 # -----------------------------
-# Dataset (SIMPLE version)
+# Dataset (single dataset)
 # -----------------------------
-full_dataset = datasets.OxfordIIITPet(
+dataset = datasets.OxfordIIITPet(
     root="./data",
     split="trainval",
     target_types="category",
@@ -48,31 +48,17 @@ full_dataset = datasets.OxfordIIITPet(
     download=True
 )
 
-val_dataset = datasets.OxfordIIITPet(
-    root="./data",
-    split="trainval",
-    target_types="category",
-    transform=val_transform,
-    download=True
-)
-
 # -----------------------------
-# Train / Val split (simple random_split)
+# Proper Train/Val split
 # -----------------------------
-num_samples = len(full_dataset)
+num_samples = len(dataset)
 train_size = int(0.8 * num_samples)
 val_size = num_samples - train_size
 
 generator = torch.Generator().manual_seed(42)
 
-train_dataset, _ = random_split(
-    full_dataset,
-    [train_size, val_size],
-    generator=generator
-)
-
-_, val_dataset = random_split(
-    val_dataset,
+train_dataset, val_dataset = random_split(
+    dataset,
     [train_size, val_size],
     generator=generator
 )
