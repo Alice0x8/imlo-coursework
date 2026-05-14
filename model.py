@@ -35,9 +35,8 @@ class CNN(nn.Module):
 
         # Fully connected classifier
         # Fully connected classifier (slightly increased capacity)
-        self.fc1 = nn.Linear(512, 768)
-        self.fc2 = nn.Linear(768, 384)
-        self.fc3 = nn.Linear(384, 37)
+        self.fc1 = nn.Linear(512, 256)
+        self.fc2 = nn.Linear(256, 37)
 
         self.dropout = nn.Dropout(0.3)
 
@@ -67,10 +66,6 @@ class CNN(nn.Module):
         # Fully connected layers
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
-
-        x = F.relu(self.fc2(x))
-        x = self.dropout(x)
-
-        x = self.fc3(x)
+        x = self.fc2(x)
 
         return x
