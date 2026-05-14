@@ -85,6 +85,12 @@ optimizer = optim.Adam(
     weight_decay=1e-4
 )
 
+scheduler = optim.lr_scheduler.StepLR(
+    optimizer,
+    step_size=10,
+    gamma=0.5
+)
+
 # -----------------------------
 # Training
 # -----------------------------
@@ -147,6 +153,8 @@ for epoch in range(epochs):
         best_val = val_acc
         torch.save(model.state_dict(), "model.pth")
         print("Saved best model!")
+
+    scheduler.step()
 
 print("Training complete.")
 print("Best Val:", best_val)
